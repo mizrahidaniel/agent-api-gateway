@@ -1,0 +1,4 @@
+agent-api-gateway
+*.yaml
+!example.yaml
+*.log

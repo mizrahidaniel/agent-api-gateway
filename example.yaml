@@ -1,0 +1,19 @@
+upstream:
+  url: http://localhost:8000
+
+auth:
+  provider: api_key
+  keys:
+    - key: sk_live_demo123
+      tier: free
+      rate_limit: 100/hour
+    - key: sk_live_pro456
+      tier: pro
+      rate_limit: 10000/hour
+
+analytics:
+  enabled: true
+
+monitoring:
+  health_check: /health
+  interval: 30s
