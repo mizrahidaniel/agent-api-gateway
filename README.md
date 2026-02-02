@@ -1,6 +1,13 @@
 # Agent API Gateway
 
-**Zero-config API gateway for agent services** - drop-in infrastructure for rate limiting, auth, monitoring.
+Zero-config API gateway for AI services. Single binary, simple YAML config.
+
+## Features
+
+- **Reverse Proxy:** Route `/service-name/*` to backend services
+- **Authentication:** Bearer tokens or API keys
+- **Rate Limiting:** Per-service, per-IP limits (requests/minute)
+- **Graceful Shutdown:** Clean shutdown on SIGTERM/SIGINT
 
 ## Quick Start
 
@@ -8,105 +15,99 @@
 # Install
 go install github.com/mizrahidaniel/agent-api-gateway@latest
 
-# Configure
-cat > gateway.yaml <<EOF
-upstream:
-  url: http://localhost:8000
-
-auth:
-  provider: api_key
-  keys:
-    - key: sk_live_demo123
-      tier: free
-      rate_limit: 100/hour
-
-analytics:
-  enabled: true
-
-monitoring:
-  health_check: /health
-  interval: 30s
-EOF
+# Create config
+cp gateway.example.yaml gateway.yaml
 
 # Run
-agent-api-gateway --config gateway.yaml
-# Gateway running on :8080, proxying to your upstream service
+agent-api-gateway gateway.yaml
 ```
 
-**Zero code changes to your API.** Just proxy through the gateway.
+## Configuration
 
-## Features
-
-- **Authentication** - API key validation, multi-tier support, key rotation
-- **Rate Limiting** - Token bucket algorithm, per-key/IP/endpoint limits
-- **Request Logging** - Structured JSON logs, query by key/endpoint/status
-- **Monitoring** - Health checks, circuit breaker, uptime tracking
-- **Multi-Service** - Route multiple backends through one gateway
-- **Dashboard** - Web UI for logs, metrics, API key management
-
-## Architecture
-
-- **Language:** Go (single binary, easy deploy)
-- **Storage:** SQLite (logs, keys) + optional Redis (distributed rate limiting)
-- **Performance:** <5ms latency overhead, >10k req/s throughput
-
-## Use Cases
-
-### Solo Agent
-Drop gateway in front of your Flask/FastAPI service:
-```bash
-# Your service
-uvicorn app:main --port 8000
-
-# Gateway (handles auth, rate limiting, logs)
-agent-api-gateway --upstream http://localhost:8000 --port 8080
-```
-
-### Multi-Service Agent
-Single gateway for multiple backends:
 ```yaml
-services:
-  - name: sentiment
-    upstream: http://localhost:8000
-    path_prefix: /v1/sentiment
-  - name: translate
-    upstream: http://localhost:8001
-    path_prefix: /v1/translate
+port: 8080
 
-auth:
-  keys:
-    - key: sk_live_abc
-      allowed_services: [sentiment]
-    - key: sk_live_xyz
-      allowed_services: [sentiment, translate]
+services:
+  # Public service, no auth
+  public-api:
+    target: "http://localhost:3000"
+
+  # Authenticated + rate limited
+  ai-service:
+    target: "http://localhost:4000"
+    auth:
+      type: bearer  # or "apikey"
+      tokens:
+        - "secret-token-123"
+    rate_limit:
+      requests_per_minute: 60
 ```
 
-### Agent Marketplace
-Platform provides gateway as shared infrastructure:
-- Agents plug in their services
-- Platform handles unified auth, billing, monitoring
-- Customers get one API key for multiple agent services
+## Usage
 
-## Development Status
+```bash
+# Route to ai-service
+curl -H "Authorization: Bearer secret-token-123" \
+  http://localhost:8080/ai-service/v1/generate
 
-**MVP in progress** - Core features shipping in 2 weeks:
+# Route to public-api (no auth)
+curl http://localhost:8080/public-api/healthcheck
+```
 
-- [x] Project structure
-- [ ] Config loading (YAML)
-- [ ] HTTP proxy (upstream forwarding)
-- [ ] API key authentication
-- [ ] Rate limiting (token bucket)
-- [ ] Request logging
-- [ ] CLI interface
+## Path Rewriting
 
-See [ClawBoard Task #270002](https://clawboard.io/tasks/270002) for progress.
+Requests to `/service-name/path` are proxied to `target + /path`.
 
-## Contributing
+Example:
+- Request: `GET /ai-service/v1/models`
+- Proxied to: `GET http://localhost:4000/v1/models`
 
-This is an agent-built project. Contributions welcome via:
-- PRs (code, docs, tests)
-- Issues (bugs, feature requests)
-- Comments on ClawBoard
+## Auth Types
+
+### Bearer Token
+```yaml
+auth:
+  type: bearer
+  tokens:
+    - "token-1"
+    - "token-2"
+```
+
+Send: `Authorization: Bearer token-1`
+
+### API Key
+```yaml
+auth:
+  type: apikey
+  tokens:
+    - "key-abc"
+```
+
+Send: `X-API-Key: key-abc`
+
+## Rate Limiting
+
+Per-service, per-client-IP. Returns `429 Too Many Requests` when exceeded.
+
+```yaml
+rate_limit:
+  requests_per_minute: 100
+```
+
+Response headers:
+- `X-RateLimit-Limit`
+- `X-RateLimit-Remaining`
+- `Retry-After`
+
+## Why This?
+
+Every agent service rebuilds the same infrastructure. This gives you:
+- ✅ Auth
+- ✅ Rate limiting
+- ✅ Multi-service routing
+- ✅ Single binary, zero dependencies
+
+Ship services faster. Let the gateway handle the boring stuff.
 
 ## License
 
